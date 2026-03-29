@@ -113,10 +113,16 @@ function LoginPage({ onLogin }) {
   const handleLogin = (e) => {
     e.preventDefault();
     if (!account.trim() || !password.trim()) { setError('请输入账号和密码'); return; }
-    if (account.trim() !== 'admin' || password.trim() !== '123456') { setError('账号或密码错误'); return; }
-    setLoading(true);
-    setError('');
-    setTimeout(() => { setLoading(false); onLogin(); }, 800);
+    const a = account.trim(), p = password.trim();
+    if (a === 'root' && p === 'modelhub2026') {
+      setLoading(true); setError('');
+      setTimeout(() => { setLoading(false); onLogin('superadmin'); }, 800);
+    } else if (a === 'admin' && p === '123456') {
+      setLoading(true); setError('');
+      setTimeout(() => { setLoading(false); onLogin('client'); }, 800);
+    } else {
+      setError('账号或密码错误');
+    }
   };
 
   return (
@@ -581,23 +587,384 @@ function AccountPage() {
   );
 }
 
+// ===== Admin: Model Pricing =====
+function AdminPricingPage() {
+  const [models, setModels] = useState([
+    { name: 'deepseek-chat', provider: 'DeepSeek', costIn: 1, costOut: 2, sellIn: 4, sellOut: 8, multiplier: 4.0, enabled: true },
+    { name: 'deepseek-reasoner', provider: 'DeepSeek', costIn: 4, costOut: 16, sellIn: 16, sellOut: 64, multiplier: 4.0, enabled: true },
+    { name: 'gpt-4o', provider: 'OpenAI', costIn: 17.5, costOut: 70, sellIn: 50, sellOut: 200, multiplier: 2.86, enabled: true },
+    { name: 'gpt-4o-mini', provider: 'OpenAI', costIn: 1, costOut: 4.2, sellIn: 4, sellOut: 16, multiplier: 3.8, enabled: true },
+    { name: 'claude-sonnet-4-5', provider: 'Anthropic', costIn: 21, costOut: 105, sellIn: 60, sellOut: 300, multiplier: 2.86, enabled: true },
+    { name: 'glm-4-flash', provider: '智谱AI', costIn: 0.5, costOut: 0.5, sellIn: 1, sellOut: 4, multiplier: 4.0, enabled: true },
+    { name: 'qwen-plus', provider: '阿里通义', costIn: 0.8, costOut: 2, sellIn: 3, sellOut: 8, multiplier: 3.75, enabled: true },
+    { name: 'cogview-4', provider: '智谱AI', costIn: 0.2, costOut: 0, sellIn: 1, sellOut: 0, multiplier: 5.0, enabled: true },
+    { name: 'dall-e-3', provider: 'OpenAI', costIn: 4, costOut: 0, sellIn: 8, sellOut: 0, multiplier: 2.0, enabled: false },
+  ]);
+  const updateModel = (idx, field, val) => {
+    setModels(prev => {
+      const next = [...prev];
+      const m = { ...next[idx], [field]: val };
+      if (field === 'multiplier') {
+        m.sellIn = +(m.costIn * val).toFixed(1);
+        m.sellOut = +(m.costOut * val).toFixed(1);
+      }
+      next[idx] = m;
+      return next;
+    });
+  };
+  const [saved, setSaved] = useState(false);
+  const handleSave = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs text-text-hint mt-1">设置每个模型的售价倍率，自动计算客户售价</p>
+        </div>
+        <button onClick={handleSave} className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${saved ? 'bg-success text-white' : 'bg-primary text-white hover:bg-primary-dark'}`}>
+          {saved ? '已保存' : '保存配置'}
+        </button>
+      </div>
+      <div className="bg-white rounded-xl border border-surface-border shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-surface-border bg-surface-muted">
+              {['状态', '模型', '厂商', '成本/入(¥/M)', '成本/出(¥/M)', '倍率', '售价/入(¥/M)', '售价/出(¥/M)', '利润率'].map(h => (
+                <th key={h} className="text-left px-4 py-3 text-xs font-medium text-text-hint uppercase">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {models.map((m, i) => {
+              const margin = m.costIn > 0 ? (((m.sellIn - m.costIn) / m.costIn) * 100).toFixed(0) : '—';
+              return (
+                <tr key={m.name} className="border-b border-surface-border/50 hover:bg-surface-hover transition-colors">
+                  <td className="px-4 py-3">
+                    <button onClick={() => updateModel(i, 'enabled', !m.enabled)} className="cursor-pointer">
+                      <span className={`inline-block w-9 h-5 rounded-full relative transition-colors ${m.enabled ? 'bg-success' : 'bg-gray-300'}`}>
+                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${m.enabled ? 'left-[18px]' : 'left-0.5'}`} />
+                      </span>
+                    </button>
+                  </td>
+                  <td className="px-4 py-3 text-sm font-medium text-text">{m.name}</td>
+                  <td className="px-4 py-3 text-xs text-text-hint">{m.provider}</td>
+                  <td className="px-4 py-3 text-xs text-text-secondary">¥{m.costIn}</td>
+                  <td className="px-4 py-3 text-xs text-text-secondary">¥{m.costOut}</td>
+                  <td className="px-4 py-3">
+                    <input type="number" step="0.1" min="1" max="10" value={m.multiplier}
+                      onChange={e => updateModel(i, 'multiplier', parseFloat(e.target.value) || 1)}
+                      className="w-16 border border-surface-border rounded px-2 py-1 text-sm text-center font-semibold text-primary focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    <span className="text-[10px] text-text-hint ml-1">x</span>
+                  </td>
+                  <td className="px-4 py-3 text-sm font-semibold text-primary">¥{m.sellIn}</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-primary">¥{m.sellOut}</td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${parseInt(margin) >= 200 ? 'text-success bg-green-50' : 'text-warn bg-amber-50'}`}>
+                      +{margin}%
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ===== Admin: Client Management =====
+function AdminClientsPage() {
+  const clients = [
+    { name: '恒海实业', email: 'admin@henghai.com', keys: 3, balance: 386.50, spent: 1613.50, group: '企业版', status: 'active', lastActive: '2 分钟前' },
+    { name: '天降保安', email: 'wang@tianjian.cn', keys: 1, balance: 220.00, spent: 780.00, group: '基础版', status: 'active', lastActive: '1 小时前' },
+    { name: '曼时传媒', email: 'li@manshi.com', keys: 2, balance: 1250.00, spent: 4750.00, group: 'VIP', status: 'active', lastActive: '30 分钟前' },
+    { name: '瑞华科技', email: 'zhang@ruihua.cn', keys: 1, balance: 0, spent: 500.00, group: '基础版', status: 'expired', lastActive: '15 天前' },
+    { name: '盛达贸易', email: 'chen@shengda.com', keys: 2, balance: 95.00, spent: 905.00, group: '企业版', status: 'active', lastActive: '3 小时前' },
+  ];
+  const totalRevenue = clients.reduce((s, c) => s + c.spent, 0);
+  const totalBalance = clients.reduce((s, c) => s + c.balance, 0);
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-4 gap-4">
+        <div className="stat-gradient-blue rounded-xl border border-blue-100 p-4">
+          <div className="text-xs text-text-hint mb-1">总客户数</div>
+          <div className="text-xl font-bold text-primary">{clients.length}</div>
+        </div>
+        <div className="stat-gradient-green rounded-xl border border-green-100 p-4">
+          <div className="text-xs text-text-hint mb-1">活跃客户</div>
+          <div className="text-xl font-bold text-success">{clients.filter(c => c.status === 'active').length}</div>
+        </div>
+        <div className="stat-gradient-amber rounded-xl border border-amber-100 p-4">
+          <div className="text-xs text-text-hint mb-1">总营收</div>
+          <div className="text-xl font-bold text-warn">¥{totalRevenue.toFixed(0)}</div>
+        </div>
+        <div className="bg-purple-50 rounded-xl border border-purple-100 p-4">
+          <div className="text-xs text-text-hint mb-1">预存余额</div>
+          <div className="text-xl font-bold text-purple-600">¥{totalBalance.toFixed(0)}</div>
+        </div>
+      </div>
+      <div className="bg-white rounded-xl border border-surface-border shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-surface-border bg-surface-muted">
+              {['企业名称', '邮箱', '套餐', 'Keys', '余额', '消费', '最近活跃', '状态'].map(h => (
+                <th key={h} className="text-left px-4 py-3 text-xs font-medium text-text-hint uppercase">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {clients.map(c => (
+              <tr key={c.name} className="border-b border-surface-border/50 hover:bg-surface-hover transition-colors cursor-pointer">
+                <td className="px-4 py-3 text-sm font-medium text-text">{c.name}</td>
+                <td className="px-4 py-3 text-xs text-text-hint">{c.email}</td>
+                <td className="px-4 py-3">
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                    c.group === 'VIP' ? 'text-purple-700 bg-purple-50' :
+                    c.group === '企业版' ? 'text-primary bg-primary-bg' :
+                    'text-text-hint bg-surface-muted'
+                  }`}>{c.group}</span>
+                </td>
+                <td className="px-4 py-3 text-sm text-text-secondary">{c.keys}</td>
+                <td className="px-4 py-3 text-sm font-medium text-success">¥{c.balance.toFixed(0)}</td>
+                <td className="px-4 py-3 text-sm text-text-secondary">¥{c.spent.toFixed(0)}</td>
+                <td className="px-4 py-3 text-xs text-text-hint">{c.lastActive}</td>
+                <td className="px-4 py-3">
+                  <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${c.status === 'active' ? 'text-success' : 'text-danger'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${c.status === 'active' ? 'bg-success pulse-dot' : 'bg-danger'}`} />
+                    {c.status === 'active' ? '活跃' : '过期'}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ===== Admin: Channels =====
+function AdminChannelsPage() {
+  const channels = [
+    { name: 'DeepSeek 主力', provider: 'DeepSeek', endpoint: 'api.deepseek.com', keys: 3, priority: 1, successRate: 99.8, avgLatency: 320, status: 'active', requests24h: 1856 },
+    { name: 'OpenAI 官方', provider: 'OpenAI', endpoint: 'api.openai.com', keys: 2, priority: 1, successRate: 99.5, avgLatency: 580, status: 'active', requests24h: 642 },
+    { name: 'Anthropic', provider: 'Anthropic', endpoint: 'api.anthropic.com', keys: 1, priority: 1, successRate: 99.2, avgLatency: 450, status: 'active', requests24h: 384 },
+    { name: '智谱 GLM', provider: '智谱AI', endpoint: 'open.bigmodel.cn', keys: 2, priority: 2, successRate: 98.9, avgLatency: 280, status: 'active', requests24h: 223 },
+    { name: '通义千问', provider: '阿里通义', endpoint: 'dashscope.aliyuncs.com', keys: 1, priority: 2, successRate: 99.1, avgLatency: 350, status: 'active', requests24h: 95 },
+    { name: 'DeepSeek 备用', provider: 'DeepSeek', endpoint: 'api.deepseek.com', keys: 1, priority: 3, successRate: 100, avgLatency: 310, status: 'standby', requests24h: 0 },
+  ];
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl border border-surface-border shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-surface-border bg-surface-muted">
+              {['渠道名称', '厂商', '端点', 'Keys', '优先级', '成功率', '平均延迟', '24h请求', '状态'].map(h => (
+                <th key={h} className="text-left px-4 py-3 text-xs font-medium text-text-hint uppercase">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {channels.map(c => (
+              <tr key={c.name} className="border-b border-surface-border/50 hover:bg-surface-hover transition-colors cursor-pointer">
+                <td className="px-4 py-3 text-sm font-medium text-text">{c.name}</td>
+                <td className="px-4 py-3 text-xs text-text-hint">{c.provider}</td>
+                <td className="px-4 py-3 text-xs text-text-hint font-mono">{c.endpoint}</td>
+                <td className="px-4 py-3 text-sm text-text-secondary">{c.keys}</td>
+                <td className="px-4 py-3">
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.priority === 1 ? 'text-primary bg-primary-bg' : c.priority === 2 ? 'text-warn bg-amber-50' : 'text-text-hint bg-surface-muted'}`}>
+                    P{c.priority}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`text-sm font-medium ${c.successRate >= 99.5 ? 'text-success' : c.successRate >= 99 ? 'text-warn' : 'text-danger'}`}>{c.successRate}%</span>
+                </td>
+                <td className="px-4 py-3 text-sm text-text-secondary">{c.avgLatency}ms</td>
+                <td className="px-4 py-3 text-sm text-text-secondary">{c.requests24h.toLocaleString()}</td>
+                <td className="px-4 py-3">
+                  <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${c.status === 'active' ? 'text-success' : 'text-text-hint'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${c.status === 'active' ? 'bg-success pulse-dot' : 'bg-gray-300'}`} />
+                    {c.status === 'active' ? '运行中' : '待命'}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ===== Admin: Profit Dashboard =====
+function AdminProfitPage() {
+  const monthly = [
+    { month: '2026-01', revenue: 2850, cost: 820, profit: 2030 },
+    { month: '2026-02', revenue: 4200, cost: 1150, profit: 3050 },
+    { month: '2026-03', revenue: 8548, cost: 2340, profit: 6208 },
+  ];
+  const chartRef = useRef(null);
+  useEffect(() => {
+    const ctx = chartRef.current?.getContext('2d');
+    if (ctx) {
+      const chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: monthly.map(m => m.month),
+          datasets: [
+            { label: '营收', data: monthly.map(m => m.revenue), backgroundColor: '#2563eb', borderRadius: 4 },
+            { label: '成本', data: monthly.map(m => m.cost), backgroundColor: '#94a3b8', borderRadius: 4 },
+            { label: '利润', data: monthly.map(m => m.profit), backgroundColor: '#16a34a', borderRadius: 4 },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: '#475569', font: { size: 11 } } } },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+            y: { grid: { color: '#f1f5f9' }, ticks: { color: '#94a3b8', callback: v => '¥' + v } },
+          },
+        }
+      });
+      return () => chart.destroy();
+    }
+  }, []);
+  const latest = monthly[monthly.length - 1];
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-4 gap-4">
+        <div className="stat-gradient-blue rounded-xl border border-blue-100 p-4">
+          <div className="text-xs text-text-hint mb-1">本月营收</div>
+          <div className="text-xl font-bold text-primary">¥{latest.revenue.toLocaleString()}</div>
+        </div>
+        <div className="bg-surface-muted rounded-xl border border-surface-border p-4">
+          <div className="text-xs text-text-hint mb-1">本月成本</div>
+          <div className="text-xl font-bold text-text-secondary">¥{latest.cost.toLocaleString()}</div>
+        </div>
+        <div className="stat-gradient-green rounded-xl border border-green-100 p-4">
+          <div className="text-xs text-text-hint mb-1">本月利润</div>
+          <div className="text-xl font-bold text-success">¥{latest.profit.toLocaleString()}</div>
+        </div>
+        <div className="stat-gradient-amber rounded-xl border border-amber-100 p-4">
+          <div className="text-xs text-text-hint mb-1">利润率</div>
+          <div className="text-xl font-bold text-warn">{((latest.profit / latest.revenue) * 100).toFixed(1)}%</div>
+        </div>
+      </div>
+      <div className="bg-white rounded-xl border border-surface-border shadow-sm p-5">
+        <div className="text-sm font-medium text-text mb-4">月度营收 / 成本 / 利润</div>
+        <div className="h-64"><canvas ref={chartRef} /></div>
+      </div>
+      <div className="bg-white rounded-xl border border-surface-border shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-surface-border bg-surface-muted">
+              {['月份', '营收', '成本', '利润', '利润率'].map(h => (
+                <th key={h} className="text-left px-5 py-3 text-xs font-medium text-text-hint uppercase">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {monthly.map(m => (
+              <tr key={m.month} className="border-b border-surface-border/50">
+                <td className="px-5 py-3 text-sm text-text font-medium">{m.month}</td>
+                <td className="px-5 py-3 text-sm text-primary font-medium">¥{m.revenue.toLocaleString()}</td>
+                <td className="px-5 py-3 text-sm text-text-secondary">¥{m.cost.toLocaleString()}</td>
+                <td className="px-5 py-3 text-sm text-success font-semibold">¥{m.profit.toLocaleString()}</td>
+                <td className="px-5 py-3">
+                  <span className="text-xs font-medium text-success bg-green-50 px-2 py-0.5 rounded-full">{((m.profit / m.revenue) * 100).toFixed(1)}%</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ===== Admin Sidebar =====
+function AdminSidebar({ active, setActive, onLogout }) {
+  const items = [
+    { id: 'admin-profit', icon: Icons.dashboard, label: '利润看板' },
+    { id: 'admin-pricing', icon: Icons.receipt, label: '模型定价' },
+    { id: 'admin-clients', icon: Icons.user, label: '客户管理' },
+    { id: 'admin-channels', icon: Icons.cube, label: '渠道管理' },
+  ];
+  return (
+    <aside className="fixed left-0 top-0 bottom-0 w-56 bg-white border-r border-surface-border flex flex-col z-20">
+      <div className="px-5 py-5 border-b border-surface-border">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-red-600 flex items-center justify-center">
+            <span className="text-white font-bold text-sm">M</span>
+          </div>
+          <div>
+            <div className="font-bold text-text text-sm">ModelHub</div>
+            <div className="text-[10px] text-danger font-medium">超级管理员</div>
+          </div>
+        </div>
+      </div>
+      <nav className="flex-1 py-3 px-3 space-y-0.5">
+        {items.map(item => (
+          <button key={item.id} onClick={() => setActive(item.id)}
+            className={`sidebar-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm cursor-pointer ${active === item.id ? 'active' : 'text-text-secondary'}`}>
+            {item.icon}
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
+      <div className="px-4 py-4 border-t border-surface-border">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+            <span className="text-danger text-xs font-bold">S</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-text">超级管理员</div>
+            <div className="text-[10px] text-text-hint">root@modelhub.cn</div>
+          </div>
+        </div>
+        <button onClick={onLogout} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs text-text-hint hover:text-danger hover:bg-red-50 cursor-pointer transition-colors">
+          {Icons.logout}<span>退出登录</span>
+        </button>
+      </div>
+    </aside>
+  );
+}
+
 // ===== App =====
-const PAGE_TITLES = { dashboard: '用量概览', keys: 'API Keys', models: '模型库', billing: '消费账单', account: '账号信息' };
+const CLIENT_TITLES = { dashboard: '用量概览', keys: 'API Keys', models: '模型库', billing: '消费账单', account: '账号信息' };
+const ADMIN_TITLES = { 'admin-profit': '利润看板', 'admin-pricing': '模型定价', 'admin-clients': '客户管理', 'admin-channels': '渠道管理' };
 
 function App() {
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [role, setRole] = useState(null); // null | 'client' | 'superadmin'
   const [active, setActive] = useState('dashboard');
 
-  if (!loggedIn) return <LoginPage onLogin={() => setLoggedIn(true)} />;
+  if (!role) return <LoginPage onLogin={(r) => { setRole(r); setActive(r === 'superadmin' ? 'admin-profit' : 'dashboard'); }} />;
 
-  const pages = { dashboard: DashboardPage, keys: KeysPage, models: ModelsPage, billing: BillingPage, account: AccountPage };
-  const Page = pages[active];
+  const handleLogout = () => { setRole(null); setActive('dashboard'); };
+
+  if (role === 'superadmin') {
+    const adminPages = { 'admin-profit': AdminProfitPage, 'admin-pricing': AdminPricingPage, 'admin-clients': AdminClientsPage, 'admin-channels': AdminChannelsPage };
+    const Page = adminPages[active] || AdminProfitPage;
+    return (
+      <div className="min-h-screen bg-surface-muted">
+        <AdminSidebar active={active} setActive={setActive} onLogout={handleLogout} />
+        <div className="ml-56">
+          <TopBar title={ADMIN_TITLES[active] || '管理后台'} />
+          <main className="p-6"><Page /></main>
+        </div>
+      </div>
+    );
+  }
+
+  const clientPages = { dashboard: DashboardPage, keys: KeysPage, models: ModelsPage, billing: BillingPage, account: AccountPage };
+  const Page = clientPages[active] || DashboardPage;
 
   return (
     <div className="min-h-screen bg-surface-muted">
-      <Sidebar active={active} setActive={setActive} onLogout={() => setLoggedIn(false)} />
+      <Sidebar active={active} setActive={setActive} onLogout={handleLogout} />
       <div className="ml-56">
-        <TopBar title={PAGE_TITLES[active]} />
+        <TopBar title={CLIENT_TITLES[active] || ''} />
         <main className="p-6"><Page /></main>
       </div>
     </div>
