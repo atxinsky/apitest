@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # ========== NewAPI 主服务 ==========
+  new-api:
+    image: calciumion/new-api:latest
+    container_name: modelhub-api
+    ports:
+      - "127.0.0.1:3000:3000"   # 只绑本地，Nginx 反代
+    environment:
+      - SQL_DSN=root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/newapi
+      - REDIS_CONN_STRING=redis://:${REDIS_PASSWORD}@redis:6379
+      - SESSION_SECRET=${SESSION_SECRET}
+      - INITIAL_ROOT_TOKEN=${INITIAL_ROOT_TOKEN}
+      # 限流
+      - GLOBAL_API_RATE_LIMIT=180
+      - GLOBAL_WEB_RATE_LIMIT=120
+      # 安全：关闭对话内容日志
+      - LOG_CONTENT=false
+      # 注册控制：关闭公开注册（只有管理员能创建用户）
+      - REGISTER_ENABLED=false
+    volumes:
+      - ./data/newapi:/data
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    networks:
+      - modelhub-net
+
+  # ========== MySQL 8 ==========
+  mysql:
+    image: mysql:8
+    container_name: modelhub-mysql
+    # 不暴露端口到宿主机（只在 Docker 网络内可达）
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: newapi
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: always
+    networks:
+      - modelhub-net
+
+  # ========== Redis 7 ==========
+  redis:
+    image: redis:7-alpine
+    container_name: modelhub-redis
+    # 不暴露端口到宿主机
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - modelhub-net
+
+networks:
+  modelhub-net:
+    driver: bridge

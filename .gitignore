@@ -1,0 +1,19 @@
+# 环境变量（含密码）
+.env
+.env.local
+.env.*.local
+
+# 数据目录
+data/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+
+# SSL 证书
+*.pem
+*.key
+*.crt
