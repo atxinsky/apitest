@@ -2,7 +2,7 @@
 # ===== ModelHub 数据库备份脚本 =====
 # 用法: bash scripts/backup.sh
 # crontab: 0 3 * * * /opt/modelhub/scripts/backup.sh >> /var/log/modelhub-backup.log 2>&1
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -13,26 +13,33 @@ RETENTION_DAYS=30
 
 # 加载环境变量
 if [ -f "${PROJECT_DIR}/.env" ]; then
+  set -a
   source "${PROJECT_DIR}/.env"
+  set +a
 else
-  echo "错误：.env 文件不存在"
+  echo "[$(date)] 错误：.env 文件不存在"
   exit 1
 fi
 
-MYSQL_PASSWORD="${MYSQL_ROOT_PASSWORD:?ERROR: MYSQL_ROOT_PASSWORD 未设置}"
+: "${MYSQL_ROOT_PASSWORD:?ERROR: MYSQL_ROOT_PASSWORD 未设置}"
 
 mkdir -p "${BACKUP_DIR}"
+chmod 700 "${BACKUP_DIR}"
 
 echo "[$(date)] 开始数据库备份..."
 
-# 通过 Docker 执行 mysqldump
-docker exec modelhub-mysql mysqldump \
+# 通过 Docker 执行 mysqldump（密码通过环境变量传递，不在命令行暴露）
+docker exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD}" modelhub-mysql \
+  mysqldump \
   -uroot \
-  -p"${MYSQL_PASSWORD}" \
   --single-transaction \
   --quick \
   --lock-tables=false \
+  --set-gtid-purged=OFF \
   newapi | gzip > "${BACKUP_FILE}"
+
+# 限制备份文件权限（只有 root 可读写）
+chmod 600 "${BACKUP_FILE}"
 
 # 验证备份
 if [ -f "${BACKUP_FILE}" ] && [ -s "${BACKUP_FILE}" ]; then
@@ -44,7 +51,7 @@ else
 fi
 
 # 上传到 COS（如果配置了）
-if [ -n "${COS_SECRET_ID}" ] && [ -n "${COS_BUCKET}" ]; then
+if [ -n "${COS_SECRET_ID:-}" ] && [ -n "${COS_BUCKET:-}" ]; then
   if command -v coscmd &>/dev/null; then
     coscmd upload "${BACKUP_FILE}" "/modelhub-backups/modelhub_${DATE}.sql.gz"
     echo "[$(date)] ✅ 已上传到 COS"

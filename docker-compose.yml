@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ========== NewAPI 主服务 ==========
   new-api:
@@ -8,7 +6,7 @@ services:
     ports:
       - "127.0.0.1:3000:3000"   # 只绑本地，Nginx 反代
     environment:
-      - SQL_DSN=root:${MYSQL_ROOT_PASSWORD}@tcp(mysql:3306)/newapi
+      - SQL_DSN=${MYSQL_USER:-newapi}:${MYSQL_PASSWORD}@tcp(mysql:3306)/newapi
       - REDIS_CONN_STRING=redis://:${REDIS_PASSWORD}@redis:6379
       - SESSION_SECRET=${SESSION_SECRET}
       - INITIAL_ROOT_TOKEN=${INITIAL_ROOT_TOKEN}
@@ -26,6 +24,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '2.0'
     restart: always
     networks:
       - modelhub-net
@@ -38,6 +41,8 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: newapi
+      MYSQL_USER: ${MYSQL_USER:-newapi}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
     volumes:
@@ -47,6 +52,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
     restart: always
     networks:
       - modelhub-net
@@ -65,10 +75,16 @@ services:
     volumes:
       - ./data/redis:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      # 用 redis-cli 的 REDISCLI_AUTH 环境变量传密码，不在命令行暴露
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
     restart: always
     networks:
       - modelhub-net
